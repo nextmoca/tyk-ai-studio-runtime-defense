@@ -1,0 +1,14 @@
+{
+  "id": "com.nextmoca.runtime-context-defense",
+  "version": "0.1.1",
+  "name": "Next Moca Runtime Defense for AI Agents",
+  "description": "Screens request context and applies Next Moca's selection and security verdicts before it reaches an LLM.",
+  "capabilities": {
+    "hooks": ["post_auth"],
+    "primary_hook": "post_auth"
+  },
+  "permissions": {},
+  "compat": {
+    "min_gateway_version": "1.0.0"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Next Moca Runtime Defense for AI Agents",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_key_env", "operating_point"],
+  "properties": {
+    "api_key_env": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the gateway environment variable holding the Needlepath API key."
+    },
+    "endpoint": {
+      "type": "string",
+      "format": "uri",
+      "default": "https://api.nextmoca.com",
+      "description": "HTTPS Needlepath API endpoint."
+    },
+    "operating_point": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Explicit immutable Needlepath operating-point label."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["shadow", "active", "quarantine", "enforce"],
+      "default": "shadow",
+      "description": "Delivery policy for a Next Moca response. Start with shadow."
+    },
+    "max_context_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 8192,
+      "description": "Maximum selected context tokens requested from Needlepath."
+    },
+    "capacity_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 128000,
+      "description": "Available downstream model-input capacity after prompt and output reservations."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3000,
+      "description": "Per-request hosted Needlepath timeout in milliseconds."
+    },
+    "on_selection_error": {
+      "type": "string",
+      "enum": ["pass", "block"],
+      "default": "pass",
+      "description": "In quarantine and enforce, what to do when the hosted call fails (bad key, quota, rate limit, oversize, timeout, transport, contract). pass sends the original request upstream; block refuses it with 503."
+    },
+    "unsupported_shape": {
+      "type": "string",
+      "enum": ["pass", "block"],
+      "default": "pass",
+      "description": "In quarantine and enforce, what to do with a chat request the plugin cannot govern (content arrays, function-role messages, duplicate JSON keys). pass sends the original request upstream; block refuses it with 422."
+    },
+    "breaker_failures": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 5,
+      "description": "Consecutive timeouts, transport errors, or 5xx responses that open the circuit breaker."
+    },
+    "breaker_cooldown_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30000,
+      "description": "How long the circuit stays open before one probe request is allowed, in milliseconds."
+    },
+    "telemetry_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Emit content-free decision receipts to the plugin process log."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+.git
+.github
+bin
+.env
+*.env
+*.pem
+*.key
+*.crt
+*.log
+release
+marketplace
+tests
+docs
+README.md
+LICENSE

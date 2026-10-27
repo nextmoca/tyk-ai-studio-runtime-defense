@@ -1,0 +1,67 @@
+# Copy this directory to Tyk's Community Marketplace as
+# plugins/nextmoca-runtime-defense/{{VERSION}}/, rename this file to
+# manifest.yaml, and replace {{VERSION}} and {{DIGEST}} with release metadata.
+id: "com.nextmoca.runtime-context-defense"
+name: "Next Moca Runtime Defense for AI Agents"
+version: "{{VERSION}}"
+description: "Governs request context before it reaches an LLM by applying hosted Next Moca selection and security delivery decisions at Tyk's post_auth hook."
+
+oci:
+  registry: "ghcr.io"
+  repository: "nextmoca/tyk-ai-studio-runtime-defense-plugin"
+  tag: "{{VERSION}}"
+  digest: "{{DIGEST}}"
+  platform:
+    - "linux/amd64"
+    - "linux/arm64"
+
+category: "security"
+keywords:
+  - "ai-security"
+  - "agent-security"
+  - "context-governance"
+  - "prompt-injection"
+  - "llm"
+maturity: "beta"
+
+links:
+  documentation: "https://docs.nextmoca.com"
+  repository: "https://github.com/nextmoca/tyk-ai-studio-runtime-defense"
+  support: "https://github.com/nextmoca/tyk-ai-studio-runtime-defense/issues"
+  homepage: "https://www.nextmoca.com"
+
+icon: "https://raw.githubusercontent.com/TykTechnologies/tyk-ai-studio-plugins-ce/main/plugins/nextmoca-runtime-defense/{{VERSION}}/icon.png"
+screenshots: []
+
+maintainers:
+  - name: "Swanand Rao"
+    email: "swanand@nextmoca.com"
+    organization: "Next Moca"
+publisher: "tyk-community"
+license: "Apache-2.0"
+
+capabilities:
+  hooks:
+    - "post_auth"
+  primary_hook: "post_auth"
+
+requirements:
+  min_studio_version: "2.2.0"
+  api_versions:
+    - "gateway-v1"
+  dependencies: []
+
+permissions:
+  services: []
+  kv: []
+  rpc: []
+  ui: []
+
+enterprise_only: false
+config_schema_url: "https://raw.githubusercontent.com/nextmoca/tyk-ai-studio-runtime-defense/main/config.schema.json"
+
+created_at: "{{RELEASED_AT}}"
+updated_at: "{{RELEASED_AT}}"
+deprecated: false
+deprecated_message: ""
+replacement: ""
