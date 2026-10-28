@@ -17,7 +17,7 @@ import (
 
 const (
 	PluginName    = "nextmoca-runtime-context-defense"
-	PluginVersion = "0.1.2"
+	PluginVersion = "0.1.3"
 )
 
 //go:embed assets/manifest.json
@@ -28,7 +28,8 @@ var configSchemaFile []byte
 
 type GatewayPlugin struct {
 	plugin_sdk.BasePlugin
-	core *Plugin
+	core                       *Plugin
+	passThroughOnInvalidConfig bool
 }
 
 func NewGatewayPlugin() *GatewayPlugin {
@@ -48,16 +49,23 @@ func (p *GatewayPlugin) Initialize(_ plugin_sdk.Context, values map[string]strin
 		// Keep the process available for the later configured initialization, but
 		// never allow a request through while the plugin has no valid policy.
 		p.core = nil
-		log.Printf("%s initialization unavailable: %v; requests will return 503 until configuration is valid", PluginName, err)
+		p.passThroughOnInvalidConfig = config.InvalidConfigurationFailsOpen(values)
+		if p.passThroughOnInvalidConfig {
+			log.Printf("%s initialization unavailable: %v; shadow/active requests will pass through until configuration is valid", PluginName, err)
+		} else {
+			log.Printf("%s initialization unavailable: %v; screening-mode requests will return 503 until configuration is valid", PluginName, err)
+		}
 		return nil
 	}
 	p.core = NewForTest(cfg, needlepath.NewClient(cfg, needlepath.NewHTTPClient()), gatewayReceiptSink{enabled: cfg.TelemetryEnabled})
+	p.passThroughOnInvalidConfig = false
 	log.Printf(
-		"%s initialized mode=%s operating_point=%q autochunk=%t on_selection_error=%s unsupported_shape=%s timeout=%s",
+		"%s initialized mode=%s operating_point=%q autochunk=%t verify_literal_excerpts=%t on_selection_error=%s unsupported_shape=%s timeout=%s",
 		PluginName,
 		cfg.Mode,
 		cfg.OperatingPoint,
 		cfg.Autochunk,
+		cfg.VerifyLiteralExcerpts,
 		cfg.OnSelectionError,
 		cfg.UnsupportedShape,
 		cfg.Timeout,
@@ -78,6 +86,9 @@ func (p *GatewayPlugin) HandlePostAuth(ctx plugin_sdk.Context, req *pb.EnrichedR
 		return &pb.PluginResponse{Modified: false}, nil
 	}
 	if p.core == nil {
+		if p.passThroughOnInvalidConfig {
+			return &pb.PluginResponse{Modified: false}, nil
+		}
 		return blockResponse(policy.CauseUnavailable), nil
 	}
 

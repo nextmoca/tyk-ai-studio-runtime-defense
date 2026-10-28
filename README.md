@@ -20,15 +20,17 @@ For the next LLM call after a tool result, the application normally includes tha
 
 ## Configure the gateway
 
-1. Build the plugin binary or image from this directory.
-2. [Create a Needlepath API key](https://docs.nextmoca.com/authentication#getting-an-api-key), then set it as a secret in the Microgateway process environment. The configuration holds only the environment-variable name, never the key itself. Because Tyk runs a plugin as a child process, allow that exact variable through its environment allowlist on every process that can host the plugin:
+1. Build the plugin binary or install its digest-pinned OCI artifact.
+2. [Create a Needlepath API key](https://docs.nextmoca.com/authentication#getting-an-api-key), then store it in AI Studio's secret mechanism. Set the plugin's `api_key` to the resulting `$SECRET/NAME` reference. AI Studio resolves the reference before the plugin is initialized, so the key is not committed to configuration or baked into the artifact.
+
+   The existing environment-passthrough path remains available when an operator prefers process-scoped secrets. Because Tyk runs a plugin as a child process, allow the exact variable through every process that can host the plugin:
 
    ```bash
    export NEXTMOCA_API_KEY="np_live_..."
    export PLUGIN_ENV_PASSTHROUGH="NEXTMOCA_API_KEY"
    ```
 
-   In Docker Compose, add both variables to the AI Studio and Microgateway services that load the plugin. Do not put the API key in the plugin configuration, manifest, or container image.
+   In Docker Compose, add both variables to the AI Studio and Microgateway services that load the plugin. `api_key` takes precedence when both configuration paths are present.
 
 3. Mount the architecture-matched binary in both Tyk services and register the relative command path. For a Docker deployment, mount the same artifact at `/opt/tyk-ai-studio/plugins` in AI Studio and `/opt/tyk-microgateway/plugins` in the Microgateway, then configure the command as `plugins/nextmoca-tyk-plugin-linux-amd64` or `plugins/nextmoca-tyk-plugin-linux-arm64`. This preserves Tyk's default plugin-path policy; no broad path allowlist is required.
 4. Register the binary with Tyk AI Studio as a gateway plugin and attach it to the `post_auth` hook. Use the plugin's [`manifest.json`](manifest.json) and [`config.schema.json`](config.schema.json) when registering a local or marketplace artifact.
@@ -38,13 +40,14 @@ Example plugin configuration:
 
 ```json
 {
-  "api_key_env": "NEXTMOCA_API_KEY",
+  "api_key": "$SECRET/NEXTMOCA_API_KEY",
   "endpoint": "https://api.nextmoca.com",
   "operating_point": "np-2026-10-r8",
   "mode": "shadow",
   "max_context_tokens": 8192,
   "capacity_tokens": 128000,
   "autochunk": true,
+  "verify_literal_excerpts": false,
   "timeout_ms": 3000,
   "telemetry_enabled": true,
   "on_selection_error": "pass",
@@ -56,9 +59,12 @@ Example plugin configuration:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
+| `api_key` | none | AI Studio secret reference or resolved Needlepath key. Takes precedence over `api_key_env`. |
+| `api_key_env` | none | Existing process-environment secret path. Supply `api_key` or `api_key_env`. |
 | `operating_point` | none, required | The immutable Next Moca label to pin. |
 | `mode` | `shadow` | Delivery policy. See [Delivery modes](#delivery-modes). |
 | `autochunk` | `true` | Split oversized candidate messages before selection and map selected excerpts back to their original message. |
+| `verify_literal_excerpts` | `false` | Reject a selection unless each returned excerpt occurs verbatim in its source candidate. |
 | `timeout_ms` | `3000` | Per-call timeout for the hosted API. |
 | `on_selection_error` | `pass` | `pass` or `block`. What `quarantine` and `enforce` do when the hosted call fails. |
 | `unsupported_shape` | `pass` | `pass` or `block`. What `quarantine` and `enforce` do with a request the plugin cannot govern. |
@@ -110,7 +116,7 @@ In `enforce`, a hosted `blocked` outcome makes the plugin return HTTP 403 with a
 
 The plugin fails open by default. In `enforce`, as in every other mode, **a failed call to the hosted API sends the original request upstream unless `on_selection_error` is `block`.** That includes a rejected API key, an exhausted quota, rate limiting, and a timeout. A gateway whose key has expired is not enforcing anything until the key is fixed.
 
-An invalid or incomplete plugin startup configuration is different: the plugin remains loaded and returns HTTP 503 before the upstream LLM for every governed request until Tyk applies a valid configuration. It never becomes a silent pass-through because `operating_point` or `api_key_env` was omitted. This also lets Tyk safely probe the plugin metadata before applying its configured values.
+An invalid or incomplete plugin startup configuration is treated according to the requested mode. In `shadow` and `active`, the plugin remains loaded and passes requests through unchanged while logging the initialization failure; this makes an initial trial safe to configure. In `quarantine` and `enforce`, it returns HTTP 503 before the upstream LLM until Tyk applies a valid configuration. An unknown mode also fails closed. This behavior lets Tyk safely probe plugin metadata before applying its configured values.
 
 Each failure has a content-free class, which the plugin always writes to the process log, even when `telemetry_enabled` is false:
 
@@ -181,7 +187,8 @@ When `telemetry_enabled` is false, the plugin logs only the failure class and re
 make test
 make build-linux-amd64
 make build-linux-arm64
-docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/nextmoca/tyk-ai-studio-runtime-defense-plugin:dev .
+make verify-linux-binaries
+ORAS=/path/to/oras make verify-oci-artifact
 ```
 
 The module uses the public Tyk AI Studio SDK. Its current public SDK module metadata references a private Tyk server-only module that the plugin API does not import; [`third_party/ai-studio-enterprise-placeholder`](third_party/ai-studio-enterprise-placeholder) is a local empty-module replacement that makes the standalone plugin build without any enterprise source or runtime dependency.
@@ -190,10 +197,27 @@ The module uses the public Tyk AI Studio SDK. Its current public SDK module meta
 
 The source-controlled [Marketplace release bundle](marketplace/) contains the
 versioned manifest template, public documentation, changelog, and icon for a
-Tyk Community Marketplace submission. Publish a signed OCI image first, then
-replace the bundle's release placeholders with the resulting immutable digest.
-The container itself contains only this compiled plugin adapter; it does not
-contain the Next Moca selection engine, policy rules, models, or credentials.
+Tyk Community Marketplace submission. Publish a signed OCI artifact first,
+then replace the bundle's release placeholders with the resulting immutable
+index digest. Every platform-specific artifact contains one layer: the static
+compiled plugin executable. It does not contain the Next Moca selection engine,
+policy rules, models, application context, or customer credentials.
+
+## Enterprise: trusting the signing key
+
+The release workflow signs the multi-platform OCI index with Next Moca's
+Cosign key pair. Enterprise operators register the public key with AI Studio
+and each Microgateway:
+
+```bash
+OCI_PLUGINS_PUBKEY_NEXTMOCA="$(cat cosign.pub)"
+```
+
+Install a digest-pinned artifact using the registered key name:
+
+```text
+oci://ghcr.io/nextmoca/tyk-ai-studio-runtime-defense-plugin@sha256:RELEASE_DIGEST?pubkey=NEXTMOCA
+```
 
 ## License
 

@@ -84,7 +84,11 @@ func (p *Plugin) Process(ctx context.Context, method string, raw []byte) Process
 
 	response, selectErr := p.selector.Select(ctx, selectionRequest)
 	decision := policy.Decide(
-		policy.Settings{Mode: p.config.Mode, OnSelectionError: p.config.OnSelectionError},
+		policy.Settings{
+			Mode:                  p.config.Mode,
+			OnSelectionError:      p.config.OnSelectionError,
+			VerifyLiteralExcerpts: p.config.VerifyLiteralExcerpts,
+		},
 		raw,
 		request,
 		response,

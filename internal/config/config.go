@@ -52,6 +52,10 @@ type Config struct {
 	CapacityTokens   int
 	Timeout          time.Duration
 	TelemetryEnabled bool
+	// VerifyLiteralExcerpts rejects a selected hosted excerpt unless it occurs
+	// verbatim in its original candidate message. It is opt-in because some
+	// compatible selection services normalize whitespace before returning text.
+	VerifyLiteralExcerpts bool
 	// Autochunk asks the hosted service to split oversized candidate messages
 	// before selection. The plugin maps selected child excerpts back to their
 	// original provider message before forwarding the request.
@@ -87,13 +91,13 @@ func Parse(values map[string]string, lookupEnv func(string) string) (Config, err
 		return Config{}, fmt.Errorf("operating_point is required; pin an immutable Needlepath label")
 	}
 
+	apiKey := strings.TrimSpace(values["api_key"])
 	apiKeyEnv := strings.TrimSpace(values["api_key_env"])
-	apiKey := ""
-	if apiKeyEnv != "" {
+	if apiKey == "" && apiKeyEnv != "" {
 		apiKey = strings.TrimSpace(lookupEnv(apiKeyEnv))
 	}
 	if apiKey == "" {
-		return Config{}, fmt.Errorf("api_key_env must name an environment variable containing a Needlepath API key")
+		return Config{}, fmt.Errorf("api_key or api_key_env must provide a Needlepath API key")
 	}
 
 	maxContextTokens, err := parsePositiveInt(values, "max_context_tokens", DefaultMaxContextTokens)
@@ -112,6 +116,10 @@ func Parse(values map[string]string, lookupEnv func(string) string) (Config, err
 		return Config{}, err
 	}
 	telemetryEnabled, err := parseBool(values, "telemetry_enabled", false)
+	if err != nil {
+		return Config{}, err
+	}
+	verifyLiteralExcerpts, err := parseBool(values, "verify_literal_excerpts", false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -137,21 +145,35 @@ func Parse(values map[string]string, lookupEnv func(string) string) (Config, err
 	}
 
 	return Config{
-		Endpoint:         endpoint,
-		APIKey:           apiKey,
-		APIKeyEnv:        apiKeyEnv,
-		Mode:             mode,
-		OperatingPoint:   operatingPoint,
-		MaxContextTokens: maxContextTokens,
-		CapacityTokens:   capacityTokens,
-		Timeout:          time.Duration(timeoutMilliseconds) * time.Millisecond,
-		TelemetryEnabled: telemetryEnabled,
-		Autochunk:        autochunk,
-		OnSelectionError: onSelectionError,
-		UnsupportedShape: unsupportedShape,
-		BreakerFailures:  breakerFailures,
-		BreakerCooldown:  time.Duration(breakerCooldownMilliseconds) * time.Millisecond,
+		Endpoint:              endpoint,
+		APIKey:                apiKey,
+		APIKeyEnv:             apiKeyEnv,
+		Mode:                  mode,
+		OperatingPoint:        operatingPoint,
+		MaxContextTokens:      maxContextTokens,
+		CapacityTokens:        capacityTokens,
+		Timeout:               time.Duration(timeoutMilliseconds) * time.Millisecond,
+		TelemetryEnabled:      telemetryEnabled,
+		VerifyLiteralExcerpts: verifyLiteralExcerpts,
+		Autochunk:             autochunk,
+		OnSelectionError:      onSelectionError,
+		UnsupportedShape:      unsupportedShape,
+		BreakerFailures:       breakerFailures,
+		BreakerCooldown:       time.Duration(breakerCooldownMilliseconds) * time.Millisecond,
 	}, nil
+}
+
+// InvalidConfigurationFailsOpen reports whether a malformed startup
+// configuration belongs to a non-screening trial mode. The value is used only
+// after Parse fails, when a complete Config cannot exist. Unknown modes remain
+// fail-closed rather than silently disabling a requested security policy.
+func InvalidConfigurationFailsOpen(values map[string]string) bool {
+	switch Mode(strings.ToLower(strings.TrimSpace(values["mode"]))) {
+	case "", ModeShadow, ModeActive:
+		return true
+	default:
+		return false
+	}
 }
 
 func parseMode(value string) (Mode, error) {

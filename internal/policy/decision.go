@@ -51,8 +51,9 @@ type Decision struct {
 
 // Settings are the configured delivery policies Decide applies.
 type Settings struct {
-	Mode             config.Mode
-	OnSelectionError config.Action
+	Mode                  config.Mode
+	OnSelectionError      config.Action
+	VerifyLiteralExcerpts bool
 }
 
 // Rewriter is the part of a parsed request the policy needs: which records
@@ -60,6 +61,7 @@ type Settings struct {
 type Rewriter interface {
 	CandidateCount() int
 	HasCandidate(id string) bool
+	IsLiteralCandidate(id, excerpt string) bool
 	RewriteSelected(excerpts map[string]string) ([]byte, error)
 	RewriteSingleCandidate(rendered string) ([]byte, error)
 }
@@ -99,12 +101,12 @@ func Decide(
 	case needlepath.OutcomeSanitizedFallback:
 		return sanitizedFallback(mode, original, request, response, receipt)
 	case needlepath.OutcomeEngaged, needlepath.OutcomeSelected:
-		return selected(mode, original, request, response, receipt)
+		return selected(settings, original, request, response, receipt)
 	case "":
 		// Older hosted deployments may omit outcome. Treat the structural
 		// selection shape as compatible only when no fallback directive exists.
 		if !response.FallbackUsed && len(response.Selected) > 0 {
-			return selected(mode, original, request, response, receipt)
+			return selected(settings, original, request, response, receipt)
 		}
 		receipt.Reason = "no_delivery_outcome"
 		return passThrough(original, receipt)
@@ -115,7 +117,7 @@ func Decide(
 }
 
 func selected(
-	mode config.Mode,
+	settings Settings,
 	original []byte,
 	request Rewriter,
 	response needlepath.Response,
@@ -129,6 +131,9 @@ func selected(
 	excerpts := make(map[string]string, len(response.Selected))
 	for _, selected := range response.Selected {
 		deliveryID := selected.DeliveryID()
+		if settings.VerifyLiteralExcerpts && !request.IsLiteralCandidate(deliveryID, selected.Excerpt) {
+			return selectedDeliveryFailure(settings, original, receipt, "selected_excerpt_not_literal")
+		}
 		if request.HasCandidate(deliveryID) && strings.TrimSpace(selected.Excerpt) != "" {
 			excerpts[deliveryID] = selected.Excerpt
 		}
@@ -144,6 +149,16 @@ func selected(
 	}
 	receipt.Reason = "selected"
 	return Decision{Kind: Transform, Body: body, Receipt: receipt}
+}
+
+func selectedDeliveryFailure(settings Settings, original []byte, receipt Receipt, reason string) Decision {
+	receipt.Reason = reason
+	receipt.ErrorClass = string(needlepath.ClassContract)
+	if settings.OnSelectionError == config.ActionBlock && settings.Mode.Screens() {
+		receipt.Reason += "_blocked"
+		return Decision{Kind: Block, Cause: CauseUnavailable, Receipt: receipt}
+	}
+	return passThrough(original, receipt)
 }
 
 func sanitizedFallback(

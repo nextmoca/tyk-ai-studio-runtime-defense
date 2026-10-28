@@ -3,8 +3,17 @@
   "title": "Next Moca Runtime Defense for AI Agents",
   "type": "object",
   "additionalProperties": false,
-  "required": ["api_key_env", "operating_point"],
+  "required": ["operating_point"],
+  "anyOf": [
+    {"required": ["api_key"]},
+    {"required": ["api_key_env"]}
+  ],
   "properties": {
+    "api_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Needlepath API key. Use an AI Studio $SECRET/name reference so the key is resolved by Studio and never committed to configuration. Takes precedence over api_key_env when both are set."
+    },
     "api_key_env": {
       "type": "string",
       "minLength": 1,
@@ -43,6 +52,11 @@
       "type": "boolean",
       "default": true,
       "description": "Split oversized candidate messages into structure-aware records before selection, then map selected excerpts back to their original message."
+    },
+    "verify_literal_excerpts": {
+      "type": "boolean",
+      "default": false,
+      "description": "Require every hosted selected excerpt to occur verbatim in its original candidate message before the plugin rewrites a request."
     },
     "timeout_ms": {
       "type": "integer",

@@ -34,6 +34,9 @@ func TestGatewayPluginExposesValidMetadata(t *testing.T) {
 	if decoded["id"] != "com.nextmoca.runtime-context-defense" {
 		t.Fatalf("manifest id = %v", decoded["id"])
 	}
+	if decoded["version"] != PluginVersion {
+		t.Fatalf("manifest version = %v, want %s", decoded["version"], PluginVersion)
+	}
 
 	schema, err := p.GetConfigSchema()
 	if err != nil {
@@ -107,24 +110,55 @@ func TestGatewayPluginBlocksEnforcedUnsafeRequest(t *testing.T) {
 	}
 }
 
-func TestGatewayPluginInitializationFailureBlocksAtTheRequestBoundary(t *testing.T) {
-	p := NewGatewayPlugin()
-	if err := p.Initialize(testGatewayContext(), map[string]string{
-		"api_key_env":     "MISSING_NEXTMOCA_API_KEY",
-		"operating_point": "np-2026-10-r8",
-	}); err != nil {
-		t.Fatalf("Initialize() error = %v, want the plugin to stay loaded and fail closed", err)
-	}
+func TestGatewayPluginInvalidConfigurationPassesThroughInTrialModes(t *testing.T) {
+	for _, mode := range []config.Mode{config.ModeShadow, config.ModeActive} {
+		t.Run(string(mode), func(t *testing.T) {
+			p := NewGatewayPlugin()
+			if err := p.Initialize(testGatewayContext(), map[string]string{
+				"mode":            string(mode),
+				"api_key_env":     "MISSING_NEXTMOCA_API_KEY",
+				"operating_point": "np-2026-10-r8",
+			}); err != nil {
+				t.Fatalf("Initialize() error = %v, want the plugin to stay loaded", err)
+			}
 
-	response, err := p.HandlePostAuth(testGatewayContext(), &pb.EnrichedRequest{Request: &pb.PluginRequest{
-		Method: "POST",
-		Body:   []byte(providerRequest),
-	}})
-	if err != nil {
-		t.Fatalf("HandlePostAuth() error = %v", err)
+			response, err := p.HandlePostAuth(testGatewayContext(), &pb.EnrichedRequest{Request: &pb.PluginRequest{
+				Method: "POST",
+				Body:   []byte(providerRequest),
+			}})
+			if err != nil {
+				t.Fatalf("HandlePostAuth() error = %v", err)
+			}
+			if response.Block || response.Modified || response.StatusCode != 0 {
+				t.Fatalf("response = %#v, want exact pass-through", response)
+			}
+		})
 	}
-	if !response.Block || response.Modified || response.StatusCode != 503 {
-		t.Fatalf("response = %#v, want an unavailable 503 block", response)
+}
+
+func TestGatewayPluginInvalidConfigurationBlocksInScreeningModes(t *testing.T) {
+	for _, mode := range []config.Mode{config.ModeQuarantine, config.ModeEnforce} {
+		t.Run(string(mode), func(t *testing.T) {
+			p := NewGatewayPlugin()
+			if err := p.Initialize(testGatewayContext(), map[string]string{
+				"mode":            string(mode),
+				"api_key_env":     "MISSING_NEXTMOCA_API_KEY",
+				"operating_point": "np-2026-10-r8",
+			}); err != nil {
+				t.Fatalf("Initialize() error = %v, want the plugin to stay loaded and fail closed", err)
+			}
+
+			response, err := p.HandlePostAuth(testGatewayContext(), &pb.EnrichedRequest{Request: &pb.PluginRequest{
+				Method: "POST",
+				Body:   []byte(providerRequest),
+			}})
+			if err != nil {
+				t.Fatalf("HandlePostAuth() error = %v", err)
+			}
+			if !response.Block || response.Modified || response.StatusCode != 503 {
+				t.Fatalf("response = %#v, want an unavailable 503 block", response)
+			}
+		})
 	}
 }
 

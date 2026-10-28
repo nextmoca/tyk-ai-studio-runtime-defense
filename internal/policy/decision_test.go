@@ -288,6 +288,41 @@ func TestEngagedWithNoMatchingCandidatePassesThrough(t *testing.T) {
 	}
 }
 
+func TestLiteralExcerptVerificationRejectsHostedTextNotPresentInSource(t *testing.T) {
+	decision := decideWith(t, Settings{
+		Mode:                  config.ModeActive,
+		VerifyLiteralExcerpts: true,
+	}, needlepath.Response{
+		Outcome: needlepath.OutcomeEngaged,
+		Selected: []needlepath.SelectedRecord{{
+			RecordID: "tyk:0",
+			Excerpt:  "Hosted text that was not in the tool result.",
+		}},
+	}, nil)
+	if decision.Kind != PassThrough || string(decision.Body) != originalBody {
+		t.Fatalf("decision = %#v, want original pass-through", decision)
+	}
+	if decision.Receipt.Reason != "selected_excerpt_not_literal" {
+		t.Fatalf("receipt reason = %q, want selected_excerpt_not_literal", decision.Receipt.Reason)
+	}
+}
+
+func TestLiteralExcerptVerificationAcceptsVerbatimSourceText(t *testing.T) {
+	decision := decideWith(t, Settings{
+		Mode:                  config.ModeActive,
+		VerifyLiteralExcerpts: true,
+	}, needlepath.Response{
+		Outcome: needlepath.OutcomeEngaged,
+		Selected: []needlepath.SelectedRecord{{
+			RecordID: "tyk:0",
+			Excerpt:  "Reservation H7K2.",
+		}},
+	}, nil)
+	if decision.Kind != Transform {
+		t.Fatalf("decision = %#v, want transform", decision)
+	}
+}
+
 func selectedResponse() needlepath.Response {
 	return needlepath.Response{
 		Outcome: needlepath.OutcomeEngaged,
@@ -320,6 +355,8 @@ type failingRewriter struct{}
 func (failingRewriter) CandidateCount() int { return 1 }
 
 func (failingRewriter) HasCandidate(string) bool { return true }
+
+func (failingRewriter) IsLiteralCandidate(string, string) bool { return true }
 
 func (failingRewriter) RewriteSelected(map[string]string) ([]byte, error) {
 	return nil, errors.New("rewrite failed")

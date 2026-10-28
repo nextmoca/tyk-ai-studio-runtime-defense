@@ -206,6 +206,22 @@ func (r Request) HasCandidate(id string) bool {
 	return ok
 }
 
+// IsLiteralCandidate reports whether excerpt occurs verbatim in the source
+// candidate message addressed by id. Child IDs emitted by the hosted
+// autochunker are mapped to their parent message before this check.
+func (r Request) IsLiteralCandidate(id, excerpt string) bool {
+	parentID, _, ok := r.candidateForSelection(id)
+	if !ok || strings.TrimSpace(excerpt) == "" {
+		return false
+	}
+	for _, index := range r.candidateIndexes {
+		if recordID(index) == parentID {
+			return strings.Contains(r.messages[index].content, excerpt)
+		}
+	}
+	return false
+}
+
 func (r Request) RewriteSelected(excerpts map[string]string) ([]byte, error) {
 	if len(excerpts) == 0 {
 		return nil, fmt.Errorf("at least one selected record excerpt is required")

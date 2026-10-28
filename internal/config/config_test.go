@@ -30,6 +30,42 @@ func TestParseResolvesAPIKeyFromConfiguredEnvironmentVariable(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsAStudioResolvedAPIKeyWithoutEnvironmentPassthrough(t *testing.T) {
+	cfg, err := Parse(
+		map[string]string{
+			"api_key":         "np_live_from_ai_studio_secret",
+			"operating_point": "np-2026-10-r8",
+		},
+		func(string) string { return "" },
+	)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if cfg.APIKey != "np_live_from_ai_studio_secret" {
+		t.Fatalf("Config.APIKey = %q, want direct secret", cfg.APIKey)
+	}
+	if cfg.APIKeyEnv != "" {
+		t.Fatalf("Config.APIKeyEnv = %q, want empty", cfg.APIKeyEnv)
+	}
+}
+
+func TestParsePrefersAStudioResolvedAPIKeyOverEnvironmentPassthrough(t *testing.T) {
+	cfg, err := Parse(
+		map[string]string{
+			"api_key":         "np_live_direct",
+			"api_key_env":     "NEXTMOCA_API_KEY",
+			"operating_point": "np-2026-10-r8",
+		},
+		func(string) string { return "np_live_environment" },
+	)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if cfg.APIKey != "np_live_direct" {
+		t.Fatalf("Config.APIKey = %q, want direct secret", cfg.APIKey)
+	}
+}
+
 func TestParseRejectsEnforceModeWithoutAPIKey(t *testing.T) {
 	_, err := Parse(
 		map[string]string{
@@ -41,8 +77,8 @@ func TestParseRejectsEnforceModeWithoutAPIKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("Parse() error = nil, want missing API-key error")
 	}
-	if !strings.Contains(err.Error(), "api_key_env") {
-		t.Fatalf("Parse() error = %q, want api_key_env guidance", err)
+	if !strings.Contains(err.Error(), "api_key") {
+		t.Fatalf("Parse() error = %q, want api_key guidance", err)
 	}
 }
 
@@ -162,6 +198,22 @@ func TestModeScreensOnlyInQuarantineAndEnforce(t *testing.T) {
 	for mode, screens := range want {
 		if mode.Screens() != screens {
 			t.Fatalf("%s.Screens() = %v, want %v", mode, mode.Screens(), screens)
+		}
+	}
+}
+
+func TestInvalidConfigurationFailsOpenOnlyForTrialModes(t *testing.T) {
+	cases := map[string]bool{
+		"":           true,
+		"shadow":     true,
+		"active":     true,
+		"quarantine": false,
+		"enforce":    false,
+		"unknown":    false,
+	}
+	for mode, want := range cases {
+		if got := InvalidConfigurationFailsOpen(map[string]string{"mode": mode}); got != want {
+			t.Fatalf("InvalidConfigurationFailsOpen(%q) = %v, want %v", mode, got, want)
 		}
 	}
 }
