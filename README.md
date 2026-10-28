@@ -44,6 +44,7 @@ Example plugin configuration:
   "mode": "shadow",
   "max_context_tokens": 8192,
   "capacity_tokens": 128000,
+  "autochunk": true,
   "timeout_ms": 3000,
   "telemetry_enabled": true,
   "on_selection_error": "pass",
@@ -57,6 +58,7 @@ Example plugin configuration:
 | --- | --- | --- |
 | `operating_point` | none, required | The immutable Next Moca label to pin. |
 | `mode` | `shadow` | Delivery policy. See [Delivery modes](#delivery-modes). |
+| `autochunk` | `true` | Split oversized candidate messages before selection and map selected excerpts back to their original message. |
 | `timeout_ms` | `3000` | Per-call timeout for the hosted API. |
 | `on_selection_error` | `pass` | `pass` or `block`. What `quarantine` and `enforce` do when the hosted call fails. |
 | `unsupported_shape` | `pass` | `pass` or `block`. What `quarantine` and `enforce` do with a request the plugin cannot govern. |
@@ -65,6 +67,8 @@ Example plugin configuration:
 | `telemetry_enabled` | `false` | Write a content-free decision receipt to the plugin log for every request. |
 
 `capacity_tokens` is the actual downstream model input room after the application reserves system instructions, the final task, conversation history, tools, output tokens, and a safety margin. It is deliberately independent of `max_context_tokens`.
+
+`autochunk` uses the shared hosted chunker, not a fixed 800-token split. Messages at or below 600 tokens remain intact. Longer messages are split at paragraph, line, sentence, then word boundaries into roughly 400-token pieces with a 500-token maximum. The Select API owns chunking and selection. The Tyk plugin only maps selected excerpts back to the source OpenAI message so that it preserves the provider's message count, roles, and tool-call identifiers; a message with no selected child receives the usual omission marker. Set `autochunk` to `false` only when preserving each eligible message as one atomic candidate is more important than selective reduction of long tool or retrieval output.
 
 ## Delivery modes
 

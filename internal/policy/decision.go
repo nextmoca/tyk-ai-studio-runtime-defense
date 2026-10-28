@@ -128,8 +128,9 @@ func selected(
 
 	excerpts := make(map[string]string, len(response.Selected))
 	for _, selected := range response.Selected {
-		if request.HasCandidate(selected.RecordID) && strings.TrimSpace(selected.Excerpt) != "" {
-			excerpts[selected.RecordID] = selected.Excerpt
+		deliveryID := selected.DeliveryID()
+		if request.HasCandidate(deliveryID) && strings.TrimSpace(selected.Excerpt) != "" {
+			excerpts[deliveryID] = selected.Excerpt
 		}
 	}
 	if len(excerpts) == 0 {

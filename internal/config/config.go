@@ -15,6 +15,7 @@ const (
 	DefaultTimeoutMilliseconds         = 3000
 	DefaultBreakerFailures             = 5
 	DefaultBreakerCooldownMilliseconds = 30000
+	DefaultAutochunk                   = true
 )
 
 type Mode string
@@ -51,6 +52,10 @@ type Config struct {
 	CapacityTokens   int
 	Timeout          time.Duration
 	TelemetryEnabled bool
+	// Autochunk asks the hosted service to split oversized candidate messages
+	// before selection. The plugin maps selected child excerpts back to their
+	// original provider message before forwarding the request.
+	Autochunk bool
 
 	// OnSelectionError and UnsupportedShape apply in quarantine and enforce.
 	OnSelectionError Action
@@ -110,6 +115,10 @@ func Parse(values map[string]string, lookupEnv func(string) string) (Config, err
 	if err != nil {
 		return Config{}, err
 	}
+	autochunk, err := parseBool(values, "autochunk", DefaultAutochunk)
+	if err != nil {
+		return Config{}, err
+	}
 	onSelectionError, err := parseAction(values, "on_selection_error")
 	if err != nil {
 		return Config{}, err
@@ -137,6 +146,7 @@ func Parse(values map[string]string, lookupEnv func(string) string) (Config, err
 		CapacityTokens:   capacityTokens,
 		Timeout:          time.Duration(timeoutMilliseconds) * time.Millisecond,
 		TelemetryEnabled: telemetryEnabled,
+		Autochunk:        autochunk,
 		OnSelectionError: onSelectionError,
 		UnsupportedShape: unsupportedShape,
 		BreakerFailures:  breakerFailures,

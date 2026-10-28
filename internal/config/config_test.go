@@ -93,6 +93,26 @@ func TestParseDefaultsFailOpenWithABoundedTimeoutAndABreaker(t *testing.T) {
 	if cfg.BreakerFailures != 5 || cfg.BreakerCooldown != 30*time.Second {
 		t.Fatalf("breaker = (%d, %s), want (5, 30s)", cfg.BreakerFailures, cfg.BreakerCooldown)
 	}
+	if !cfg.Autochunk {
+		t.Fatal("Config.Autochunk = false, want true by default")
+	}
+}
+
+func TestParseAllowsAutochunkToBeDisabled(t *testing.T) {
+	cfg, err := Parse(
+		map[string]string{
+			"api_key_env":     "NEXTMOCA_API_KEY",
+			"operating_point": "np-2026-10-r8",
+			"autochunk":       "false",
+		},
+		func(string) string { return "np_live_test" },
+	)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if cfg.Autochunk {
+		t.Fatal("Config.Autochunk = true, want false")
+	}
 }
 
 func TestParseAcceptsBlockActionsAndBreakerSettings(t *testing.T) {

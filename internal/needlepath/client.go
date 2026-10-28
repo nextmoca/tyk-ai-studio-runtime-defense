@@ -63,8 +63,24 @@ type Response struct {
 }
 
 type SelectedRecord struct {
+	// RecordID is always the caller-supplied record ID from the Select API.
 	RecordID string
 	Excerpt  string
+	// ChunkIndex is present only when the hosted API autochunked this record.
+	// It is one-based on the wire and lets the plugin restore selected child
+	// excerpts to their original OpenAI message in source order.
+	ChunkIndex int
+}
+
+// DeliveryID is an internal, unique key for a selected excerpt. The Select API
+// keeps the caller's record ID on every autochunked child and supplies a
+// separate one-based chunk_index. The OpenAI rewriter needs one key per child,
+// so it uses this temporary ID without changing the public wire contract.
+func (record SelectedRecord) DeliveryID() string {
+	if record.ChunkIndex > 0 {
+		return fmt.Sprintf("%s#%d", record.RecordID, record.ChunkIndex)
+	}
+	return record.RecordID
 }
 
 // NewHTTPClient returns the HTTP client the plugin uses for the hosted API. It
@@ -184,6 +200,7 @@ func (c *Client) wireRequest(request Request, requestID string) map[string]any {
 			"max_context_tokens":  c.config.MaxContextTokens,
 			"capacity_cap_tokens": c.config.CapacityTokens,
 			"operating_point":     c.config.OperatingPoint,
+			"autochunk":           c.config.Autochunk,
 		},
 		"render":            true,
 		"render_format":     "plain",
@@ -285,9 +302,29 @@ func decodeSelected(value any) ([]SelectedRecord, error) {
 		if !ok {
 			return nil, fmt.Errorf("invalid Needlepath response: selected excerpt is required")
 		}
-		selected = append(selected, SelectedRecord{RecordID: recordID, Excerpt: excerpt})
+		chunkIndex, err := optionalPositiveInt(record, "chunk_index")
+		if err != nil {
+			return nil, err
+		}
+		selected = append(selected, SelectedRecord{
+			RecordID:   recordID,
+			Excerpt:    excerpt,
+			ChunkIndex: chunkIndex,
+		})
 	}
 	return selected, nil
+}
+
+func optionalPositiveInt(body map[string]any, field string) (int, error) {
+	value, found := body[field]
+	if !found {
+		return 0, nil
+	}
+	number, ok := number(value)
+	if !ok || number < 1 || number != float64(int(number)) {
+		return 0, fmt.Errorf("invalid Needlepath response: %s must be a positive integer", field)
+	}
+	return int(number), nil
 }
 
 func requiredInt(body map[string]any, field string) (int, error) {

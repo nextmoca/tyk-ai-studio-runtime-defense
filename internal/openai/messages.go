@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -200,25 +202,43 @@ func (r Request) CandidateCount() int {
 }
 
 func (r Request) HasCandidate(id string) bool {
-	for _, index := range r.candidateIndexes {
-		if recordID(index) == id {
-			return true
-		}
-	}
-	return false
+	_, _, ok := r.candidateForSelection(id)
+	return ok
 }
 
 func (r Request) RewriteSelected(excerpts map[string]string) ([]byte, error) {
 	if len(excerpts) == 0 {
 		return nil, fmt.Errorf("at least one selected record excerpt is required")
 	}
+	grouped := make(map[string][]selectedExcerpt, len(excerpts))
+	for id, excerpt := range excerpts {
+		parentID, partIndex, ok := r.candidateForSelection(id)
+		if !ok || strings.TrimSpace(excerpt) == "" {
+			continue
+		}
+		grouped[parentID] = append(grouped[parentID], selectedExcerpt{
+			partIndex: partIndex,
+			text:      excerpt,
+		})
+	}
+	if len(grouped) == 0 {
+		return nil, fmt.Errorf("no selected excerpts match candidate messages")
+	}
+	for parentID := range grouped {
+		sort.SliceStable(grouped[parentID], func(left, right int) bool {
+			return grouped[parentID][left].partIndex < grouped[parentID][right].partIndex
+		})
+	}
 
 	rewrittenMessages := make([]json.RawMessage, 0, len(r.messages))
 	for index, message := range r.messages {
 		fields := copyFields(message.fields)
 		if containsIndex(r.candidateIndexes, index) {
-			content, selected := excerpts[recordID(index)]
-			if !selected {
+			parts, selected := grouped[recordID(index)]
+			content := ""
+			if selected {
+				content = joinSelectedExcerpts(parts)
+			} else {
 				content = OmissionMarker
 			}
 			encoded, err := json.Marshal(content)
@@ -245,6 +265,42 @@ func (r Request) RewriteSelected(excerpts map[string]string) ([]byte, error) {
 		return nil, fmt.Errorf("encode rewritten request: %w", err)
 	}
 	return encodedRoot, nil
+}
+
+type selectedExcerpt struct {
+	partIndex int
+	text      string
+}
+
+func joinSelectedExcerpts(parts []selectedExcerpt) string {
+	content := make([]string, 0, len(parts))
+	for _, part := range parts {
+		content = append(content, part.text)
+	}
+	return strings.Join(content, "\n\n")
+}
+
+// candidateForSelection resolves an internal delivery ID to the candidate
+// message it belongs to. The hosted Select API retains the original record ID
+// and returns a separate one-based chunk_index; the thin client combines those
+// fields into "<original-id>#<one-based-part>" only for delivery. An unsplit
+// record retains its original ID. Unknown or malformed IDs are rejected.
+func (r Request) candidateForSelection(id string) (string, int, bool) {
+	for _, index := range r.candidateIndexes {
+		parentID := recordID(index)
+		if id == parentID {
+			return parentID, 0, true
+		}
+		part, found := strings.CutPrefix(id, parentID+"#")
+		if !found {
+			continue
+		}
+		partIndex, err := strconv.Atoi(part)
+		if err == nil && partIndex > 0 {
+			return parentID, partIndex, true
+		}
+	}
+	return "", 0, false
 }
 
 func (r Request) RewriteSingleCandidate(rendered string) ([]byte, error) {

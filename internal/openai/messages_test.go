@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +97,50 @@ func TestRewriteSelectedReplacesUnselectedCandidatesWithTheOmissionMarker(t *tes
 		if body.Messages[index]["content"] != content {
 			t.Fatalf("messages[%d].content = %q, want %q", index, body.Messages[index]["content"], content)
 		}
+	}
+}
+
+func TestRewriteSelectedMapsAutochunkChildrenToTheirParentInSourceOrder(t *testing.T) {
+	request := mustParse(t, `{
+        "messages":[
+            {"role":"tool","tool_call_id":"call_1","content":"long raw tool result"},
+            {"role":"tool","tool_call_id":"call_2","content":"unrelated raw tool result"},
+            {"role":"user","content":"What is the confirmation code?"}
+        ]
+    }`)
+
+	if !request.HasCandidate("tyk:0#1") || !request.HasCandidate("tyk:0#2") {
+		t.Fatal("autochunk child IDs should resolve to their parent candidate")
+	}
+	if request.HasCandidate("tyk:0#0") || request.HasCandidate("tyk:99#1") {
+		t.Fatal("malformed or unknown child IDs must not resolve")
+	}
+
+	rewritten, err := request.RewriteSelected(map[string]string{
+		"tyk:0#2":  "second selected passage",
+		"tyk:0#1":  "first selected passage",
+		"tyk:99#1": "unknown selected passage",
+	})
+	if err != nil {
+		t.Fatalf("RewriteSelected() error = %v", err)
+	}
+	var body struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(rewritten, &body); err != nil {
+		t.Fatalf("decode rewrite = %v", err)
+	}
+	if got, want := body.Messages[0]["content"], "first selected passage\n\nsecond selected passage"; got != want {
+		t.Fatalf("parent content = %q, want %q", got, want)
+	}
+	if got := body.Messages[1]["content"]; got != OmissionMarker {
+		t.Fatalf("unselected candidate = %q, want omission marker", got)
+	}
+	if got := body.Messages[0]["tool_call_id"]; got != "call_1" {
+		t.Fatalf("tool_call_id changed: %q", got)
+	}
+	if strings.Contains(string(rewritten), "unknown selected passage") {
+		t.Fatalf("unknown child record reached rewritten body: %s", rewritten)
 	}
 }
 
