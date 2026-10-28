@@ -17,7 +17,7 @@ import (
 
 const (
 	PluginName    = "nextmoca-runtime-context-defense"
-	PluginVersion = "0.1.1"
+	PluginVersion = "0.1.2"
 )
 
 //go:embed assets/manifest.json
@@ -53,10 +53,11 @@ func (p *GatewayPlugin) Initialize(_ plugin_sdk.Context, values map[string]strin
 	}
 	p.core = NewForTest(cfg, needlepath.NewClient(cfg, needlepath.NewHTTPClient()), gatewayReceiptSink{enabled: cfg.TelemetryEnabled})
 	log.Printf(
-		"%s initialized mode=%s operating_point=%q on_selection_error=%s unsupported_shape=%s timeout=%s",
+		"%s initialized mode=%s operating_point=%q autochunk=%t on_selection_error=%s unsupported_shape=%s timeout=%s",
 		PluginName,
 		cfg.Mode,
 		cfg.OperatingPoint,
+		cfg.Autochunk,
 		cfg.OnSelectionError,
 		cfg.UnsupportedShape,
 		cfg.Timeout,

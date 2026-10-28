@@ -29,8 +29,8 @@ grep -Fqx 'module github.com/nextmoca/tyk-ai-studio-runtime-defense' "$ROOT/go.m
 grep -Fq 'ARG SOURCE=https://github.com/nextmoca/tyk-ai-studio-runtime-defense' "$ROOT/Dockerfile" \
   || fail 'OCI source metadata must point to the standalone public repository'
 
-grep -Fq '"version": "0.1.1"' "$ROOT/manifest.json" \
-  || fail 'first public release must identify as 0.1.1'
+grep -Fq '"version": "0.1.2"' "$ROOT/manifest.json" \
+  || fail 'release must identify as 0.1.2'
 
 grep -Fq 'ghcr.io/nextmoca/tyk-ai-studio-runtime-defense-plugin' "$ROOT/.github/workflows/oci-release.yml" \
   || fail 'release workflow must publish the designated adapter image'

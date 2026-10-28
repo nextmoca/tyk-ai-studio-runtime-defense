@@ -43,6 +43,9 @@ func TestSelectSendsRecordsAndQuarantineMode(t *testing.T) {
 		if got := budget["operating_point"]; got != "np-2026-10-r7" {
 			t.Fatalf("budget.operating_point = %#v", got)
 		}
+		if got := budget["autochunk"]; got != true {
+			t.Fatalf("budget.autochunk = %#v, want true", got)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(fmt.Sprintf(`{
@@ -105,6 +108,50 @@ func TestSelectRejectsResponseForAnotherRequest(t *testing.T) {
 	_, err := client.Select(context.Background(), Request{TaskPrompt: "Find the answer."})
 	if got := ClassOf(err); got != ClassContract {
 		t.Fatalf("ClassOf(err) = %q, want %q", got, ClassContract)
+	}
+}
+
+func TestDecodeResponsePreservesAutochunkChildrenAsDistinctDeliveryIDs(t *testing.T) {
+	response, err := decodeResponse([]byte(`{
+        "request_id":"tyk-test-request",
+        "rendered_context":"first selected passage\n\nsecond selected passage",
+        "tokens_before":1200,
+        "tokens_after":200,
+        "tokens_saved":1000,
+        "fallback_used":false,
+        "outcome":"engaged",
+        "selected":[
+            {"record_id":"tyk:0","chunk_index":2,"excerpt":"second selected passage"},
+            {"record_id":"tyk:0","chunk_index":1,"excerpt":"first selected passage"}
+        ]
+    }`), "tyk-test-request")
+	if err != nil {
+		t.Fatalf("decodeResponse() error = %v", err)
+	}
+	if len(response.Selected) != 2 {
+		t.Fatalf("selected count = %d, want 2", len(response.Selected))
+	}
+	if got, want := response.Selected[0].DeliveryID(), "tyk:0#2"; got != want {
+		t.Fatalf("first delivery ID = %q, want %q", got, want)
+	}
+	if got, want := response.Selected[1].DeliveryID(), "tyk:0#1"; got != want {
+		t.Fatalf("second delivery ID = %q, want %q", got, want)
+	}
+}
+
+func TestDecodeResponseRejectsInvalidAutochunkIndex(t *testing.T) {
+	_, err := decodeResponse([]byte(`{
+        "request_id":"tyk-test-request",
+        "rendered_context":"selected passage",
+        "tokens_before":1200,
+        "tokens_after":200,
+        "tokens_saved":1000,
+        "fallback_used":false,
+        "outcome":"engaged",
+        "selected":[{"record_id":"tyk:0","chunk_index":0,"excerpt":"selected passage"}]
+    }`), "tyk-test-request")
+	if err == nil || !strings.Contains(err.Error(), "chunk_index must be a positive integer") {
+		t.Fatalf("decodeResponse() error = %v, want invalid chunk_index", err)
 	}
 }
 
@@ -325,6 +372,7 @@ func testConfig(endpoint string, mode config.Mode) config.Config {
 		OperatingPoint:   "np-2026-10-r7",
 		MaxContextTokens: 8192,
 		CapacityTokens:   128000,
+		Autochunk:        true,
 	}
 }
 

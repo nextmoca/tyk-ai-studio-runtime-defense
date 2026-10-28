@@ -243,6 +243,37 @@ func TestEngagedMultiCandidateKeepsSelectedAndMarksOmittedMessages(t *testing.T)
 	}
 }
 
+func TestEngagedAutochunkedChildrenPreserveTheirParentAndSourceOrder(t *testing.T) {
+	request, support, err := openai.Parse([]byte(`{
+        "messages":[
+            {"role":"assistant","content":"long retrieval result"},
+            {"role":"user","content":"What is the confirmation code?"}
+        ]
+    }`))
+	if err != nil || support != openai.Supported {
+		t.Fatalf("Parse() = (%#v, %v, %v)", request, support, err)
+	}
+	decision := Decide(Settings{Mode: config.ModeEnforce}, []byte(`{"messages":[]}`), request, needlepath.Response{
+		Outcome: needlepath.OutcomeEngaged,
+		Selected: []needlepath.SelectedRecord{
+			{RecordID: "tyk:0", ChunkIndex: 2, Excerpt: "second selected passage"},
+			{RecordID: "tyk:0", ChunkIndex: 1, Excerpt: "first selected passage"},
+		},
+	}, nil)
+	if decision.Kind != Transform {
+		t.Fatalf("decision.Kind = %q, want Transform", decision.Kind)
+	}
+	var body struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(decision.Body, &body); err != nil {
+		t.Fatalf("decode rewritten body: %v", err)
+	}
+	if got, want := body.Messages[0]["content"], "first selected passage\n\nsecond selected passage"; got != want {
+		t.Fatalf("parent content = %q, want %q", got, want)
+	}
+}
+
 func TestEngagedWithNoMatchingCandidatePassesThrough(t *testing.T) {
 	request, support, err := openai.Parse([]byte(multiCandidateBody))
 	if err != nil || support != openai.Supported {

@@ -39,6 +39,11 @@
       "default": 128000,
       "description": "Available downstream model-input capacity after prompt and output reservations."
     },
+    "autochunk": {
+      "type": "boolean",
+      "default": true,
+      "description": "Split oversized candidate messages into structure-aware records before selection, then map selected excerpts back to their original message."
+    },
     "timeout_ms": {
       "type": "integer",
       "minimum": 1,
