@@ -13,6 +13,15 @@ require() {
   fi
 }
 
+forbid() {
+  local pattern="$1"
+  local message="$2"
+  if grep -Fq -- "$pattern" "$WORKFLOW"; then
+    printf 'FAIL: %s\n' "$message" >&2
+    exit 1
+  fi
+}
+
 if [ ! -f "$WORKFLOW" ]; then
   printf 'FAIL: Tyk OCI release workflow is missing\n' >&2
   exit 1
@@ -43,7 +52,7 @@ require 'sigstore/cosign-installer@v3' 'workflow must install Cosign'
 require 'COSIGN_PRIVATE_KEY' 'workflow must use the repository signing key'
 require 'COSIGN_PASSWORD' 'workflow must use the repository signing-key password'
 require 'cosign sign --yes --key env://COSIGN_KEY' 'workflow must sign the immutable index digest with the key pair'
-require '--new-bundle-format=false' 'workflow must publish a legacy-compatible signature'
+forbid '--new-bundle-format' 'workflow must not depend on a version-specific legacy Cosign flag'
 require 'cosign verify --key cosign.pub' 'workflow must verify the published signature'
 require 'ghcr.io/nextmoca/tyk-ai-studio-runtime-defense-plugin' 'workflow must publish the designated thin-plugin artifact'
 

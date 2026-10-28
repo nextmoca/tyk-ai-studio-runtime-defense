@@ -17,7 +17,7 @@ import (
 
 const (
 	PluginName    = "nextmoca-runtime-context-defense"
-	PluginVersion = "0.1.3"
+	PluginVersion = "0.1.4"
 )
 
 //go:embed assets/manifest.json

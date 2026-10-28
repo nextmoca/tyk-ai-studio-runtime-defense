@@ -80,7 +80,6 @@ jobs:
           test -n "$COSIGN_KEY"
           test -n "$COSIGN_PASSWORD"
           cosign sign --yes --key env://COSIGN_KEY \
-            --new-bundle-format=false --use-signing-config=false \
             "$IMAGE@${{ steps.publish.outputs.digest }}"
           cosign verify --key cosign.pub "$IMAGE@${{ steps.publish.outputs.digest }}"
 

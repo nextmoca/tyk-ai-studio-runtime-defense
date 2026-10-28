@@ -34,8 +34,8 @@ if [ -e "$ROOT/Dockerfile" ] || [ -e "$ROOT/.dockerignore" ]; then
   fail 'public Tyk plugin must publish a binary OCI artifact, not a container image'
 fi
 
-grep -Fq '"version": "0.1.3"' "$ROOT/manifest.json" \
-  || fail 'release must identify as 0.1.3'
+grep -Fq '"version": "0.1.4"' "$ROOT/manifest.json" \
+  || fail 'release must identify as 0.1.4'
 
 grep -Fq 'ghcr.io/nextmoca/tyk-ai-studio-runtime-defense-plugin' "$ROOT/.github/workflows/oci-release.yml" \
   || fail 'release workflow must publish the designated adapter artifact'
