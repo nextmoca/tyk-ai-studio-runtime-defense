@@ -23,6 +23,8 @@ For the next LLM call after a tool result, the application normally includes tha
 1. Build the plugin binary or install its digest-pinned OCI artifact.
 2. [Create a Needlepath API key](https://docs.nextmoca.com/authentication#getting-an-api-key), then store it in AI Studio's secret mechanism. Set the plugin's `api_key` to the resulting `$SECRET/NAME` reference. AI Studio resolves the reference before the plugin is initialized, so the key is not committed to configuration or baked into the artifact.
 
+   `$SECRET/NAME` plugin configuration requires AI Studio 2.3.0 or later. In AI Studio 2.2.x, the reference reaches the plugin literally and cannot authenticate with Next Moca. For a direct 2.2.x deployment, use `api_key_env` with `PLUGIN_ENV_PASSTHROUGH` instead.
+
    The existing environment-passthrough path remains available when an operator prefers process-scoped secrets. Because Tyk runs a plugin as a child process, allow the exact variable through every process that can host the plugin:
 
    ```bash
@@ -30,7 +32,7 @@ For the next LLM call after a tool result, the application normally includes tha
    export PLUGIN_ENV_PASSTHROUGH="NEXTMOCA_API_KEY"
    ```
 
-   In Docker Compose, add both variables to the AI Studio and Microgateway services that load the plugin. `api_key` takes precedence when both configuration paths are present.
+   In Docker Compose, add both variables to the AI Studio and Microgateway services that load the plugin. Configure the plugin with `"api_key_env": "NEXTMOCA_API_KEY"`. `api_key` takes precedence when both configuration paths are present.
 
 3. Mount the architecture-matched binary in both Tyk services and register the relative command path. For a Docker deployment, mount the same artifact at `/opt/tyk-ai-studio/plugins` in AI Studio and `/opt/tyk-microgateway/plugins` in the Microgateway, then configure the command as `plugins/nextmoca-tyk-plugin-linux-amd64` or `plugins/nextmoca-tyk-plugin-linux-arm64`. This preserves Tyk's default plugin-path policy; no broad path allowlist is required.
 4. Register the binary with Tyk AI Studio as a gateway plugin and attach it to the `post_auth` hook. Use the plugin's [`manifest.json`](manifest.json) and [`config.schema.json`](config.schema.json) when registering a local or marketplace artifact.
